@@ -17,7 +17,7 @@ on:
 
 env:
   # Use docker.io for Docker Hub if empty.
-  REGISTRY: ghcr.io/${{ github.actor }}
+  REGISTRY: ghcr.io/${{ lower(github.actor) }}
   # github.repository as <account>/<repo>
   API_IMAGE_NAME: fabrikam-api
   INIT_IMAGE_NAME: fabrikam-init  
@@ -96,7 +96,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ lower(github.actor) }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract metadata (tags, labels) for Docker
@@ -173,7 +173,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ lower(github.actor) }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract INIT image metadata (tags, labels) for Docker
@@ -207,8 +207,8 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-          TAGS: ${{ steps.meta.outputs-init.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs-init.digest }}
+          TAGS: ${{ steps.meta-init.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-init.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.INIT_IMAGE_NAME }}@${DIGEST}
@@ -250,7 +250,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ lower(github.actor) }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract WEB image metadata (tags, labels) for Docker
@@ -282,8 +282,8 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-          TAGS: ${{ steps.meta.outputs-web.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs-web.digest }}
+          TAGS: ${{ steps.meta-web.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-web.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
         run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}@${DIGEST}
