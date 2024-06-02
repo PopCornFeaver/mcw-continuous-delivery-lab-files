@@ -42,20 +42,20 @@ jobs:
           run: |            
             echo "========== check paths of modified files =========="
             git diff --name-only HEAD^ HEAD > files.txt
-            echo "run_api_job=false >> $GITHUB_OUTPUT"                
-            echo "run_web_job=false >> $GITHUB_OUTPUT"            
-            echo "run_init_job=false >> $GITHUB_OUTPUT"
+            echo "run_api_job=false" >> "$GITHUB_OUTPUT"                
+            echo "run_web_job=false" >> "$GITHUB_OUTPUT"            
+            echo "run_init_job=false" >> "$GITHUB_OUTPUT"
             while IFS= read -r file
             do
               echo $file
               if [[ $file == content-api/* ]]; then                
-                echo "run_api_job=true >> $GITHUB_OUTPUT"
+                echo "run_api_job=true" >> "$GITHUB_OUTPUT"
                 continue
               elif [[ $file == content-web/* ]]; then                                                  
-                echo "run_web_job=true >> $GITHUB_OUTPUT"
+                echo "run_web_job=true" >> "$GITHUB_OUTPUT"
                 continue
               elif [[ $file == content-init/* ]]; then                
-                echo "run_init_job=true >> $GITHUB_OUTPUT"
+                echo "run_init_job=true" >> "$GITHUB_OUTPUT"
                 continue
               fi
             done < files.txt
