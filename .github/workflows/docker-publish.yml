@@ -7,25 +7,63 @@ name: Docker
 
 on:
   schedule:
-    - cron: '32 5 * * *'
+    - cron: '40 18 * * *'
   push:
-    branches: [ "main" ]
+    branches: [ main ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 env:
-  # Use docker.io for Docker Hub if empty
+  # Use docker.io for Docker Hub if empty.
   REGISTRY: ghcr.io/${{ github.actor }}
   # github.repository as <account>/<repo>
-  IMAGE_NAME: fabrikam-init
-
+  API_IMAGE_NAME: fabrikam-api
+  INIT_IMAGE_NAME: fabrikam-init  
+  WEB_IMAGE_NAME: fabrikam-web
 
 jobs:
-  build:
+  check_changed_folders:
+      name: Check modified files
+      outputs:
+        run_api_job: ${{ steps.check_files.outputs.run_api_job }}
+        run_web_job: ${{ steps.check_files.outputs.run_web_job }}
+        run_init_job: ${{ steps.check_files.outputs.run_init_job }}
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout code
+          uses: actions/checkout@v2
+          with:
+            fetch-depth: 2
 
+        - name: check modified files
+          id: check_files
+          run: |            
+            echo "========== check paths of modified files =========="
+            git diff --name-only HEAD^ HEAD > files.txt
+            echo "::set-output name=run_api_job::false"                
+            echo "::set-output name=run_web_job::false"            
+            echo "::set-output name=run_init_job::false"
+            while IFS= read -r file
+            do
+              echo $file
+              if [[ $file == content-api/* ]]; then                
+                echo "::set-output name=run_api_job::true"
+                continue
+              elif [[ $file == content-web/* ]]; then                                                  
+                echo "::set-output name=run_web_job::true"
+                continue
+              elif [[ $file == content-init/* ]]; then                
+                echo "::set-output name=run_init_job::true"
+                continue
+              fi
+            done < files.txt
+  build-api:
     runs-on: ubuntu-latest
+    name: Update the API Docker image
+    needs: check_changed_folders
+    if: needs.check_changed_folders.outputs.run_api_job == 'true'
     permissions:
       contents: read
       packages: write
@@ -63,20 +101,20 @@ jobs:
 
       # Extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action
-      - name: Extract Docker metadata
+      - name: Extract Docker metadata for ${{ env.API_IMAGE_NAME }}
         id: meta
         uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}
 
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
-      - name: Build and push Docker image
+      - name: Build and push Docker image for ${{ env.API_IMAGE_NAME }}
         id: build-and-push
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
-          file: ./content-init/Dockerfile                      
-          context: ./content-init   
+          file: ./content-api/Dockerfile                      # <-- Add these
+          context: ./content-api                              # <-- two lines
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -88,7 +126,7 @@ jobs:
       # repository is public to avoid leaking data.  If you would like to publish
       # transparency data even for private images, pass --force to cosign below.
       # https://github.com/sigstore/cosign
-      - name: Sign the published Docker image
+      - name: Sign the published Docker image for ${{ env.API_IMAGE_NAME }}
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
@@ -96,4 +134,156 @@ jobs:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}@${DIGEST}
+      
+  build-init:
+    runs-on: ubuntu-latest
+    name: Update the Init Docker image
+    needs: check_changed_folders
+    if: needs.check_changed_folders.outputs.run_init_job == 'true'
+    permissions:
+      contents: read
+      packages: write
+      # This is used to complete the identity challenge
+      # with sigstore/fulcio when running outside of PRs.
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install the cosign tool except on PR
+      # https://github.com/sigstore/cosign-installer
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 #v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+
+      # Set up BuildKit Docker container builder to be able to build
+      # multi-platform images and export cache
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+
+      # Login against a Docker registry except on PR
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      # Extract INIT image metadata (tags, labels) for Docker
+      # https://github.com/docker/metadata-action
+      - name: Extract Docker metadata for ${{ env.INIT_IMAGE_NAME }}
+        id: meta-init
+        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.INIT_IMAGE_NAME }}
+
+      # Build and push Docker image with Buildx (don't push on PR)
+      # https://github.com/docker/build-push-action
+      - name: Build and push Docker image for ${{ env.INIT_IMAGE_NAME }}
+        id: build-and-push-init
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
+        with:
+          file: ./content-init/Dockerfile                      # <-- Add these
+          context: ./content-init                              # <-- two lines
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-init.outputs.tags }}
+          labels: ${{ steps.meta-init.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Sign the resulting Docker image digest except on PRs.
+      # This will only write to the public Rekor transparency log when the Docker
+      # repository is public to avoid leaking data.  If you would like to publish
+      # transparency data even for private images, pass --force to cosign below.
+      # https://github.com/sigstore/cosign
+      - name: Sign the published Docker image for ${{ env.INIT_IMAGE_NAME }}
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
+          TAGS: ${{ steps.meta.outputs-init.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs-init.digest }}
+        # This step uses the identity token to provision an ephemeral certificate
+        # against the sigstore community Fulcio instance.
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.INIT_IMAGE_NAME }}@${DIGEST}
+    
+  build-web:
+    runs-on: ubuntu-latest
+    name: Update the Web Docker image
+    needs: check_changed_folders
+    if: needs.check_changed_folders.outputs.run_web_job == 'true'
+    permissions:
+      contents: read
+      packages: write
+      # This is used to complete the identity challenge
+      # with sigstore/fulcio when running outside of PRs.
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install the cosign tool except on PR
+      # https://github.com/sigstore/cosign-installer
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 #v3.5.0
+        with:
+          cosign-release: 'v2.2.4'
+
+      # Set up BuildKit Docker container builder to be able to build
+      # multi-platform images and export cache
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+
+      # Login against a Docker registry except on PR
+      # https://github.com/docker/login-action
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      # Extract WEB image metadata (tags, labels) for Docker
+      # https://github.com/docker/metadata-action
+      - name: Extract Docker metadata for ${{ env.WEB_IMAGE_NAME }}
+        id: meta-web
+        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}
+
+      # Build and push Docker image with Buildx (don't push on PR)
+      # https://github.com/docker/build-push-action
+      - name: Build and push Docker image for ${{ env.WEB_IMAGE_NAME }}
+        id: build-and-push-web
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
+        with:
+          file: ./content-web/Dockerfile                      # <-- Add these
+          context: ./content-web                              # <-- two lines
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+
+      # Sign the resulting Docker image digest except on PRs.
+      # This will only write to the public Rekor transparency log when the Docker
+      # repository is public to avoid leaking data.  If you would like to publish
+      # transparency data even for private images, pass --force to cosign below.
+      # https://github.com/sigstore/cosign
+      - name: Sign the published Docker image for ${{ env.WEB_IMAGE_NAME }}
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
+          TAGS: ${{ steps.meta.outputs-web.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs-web.digest }}
+        # This step uses the identity token to provision an ephemeral certificate
+        # against the sigstore community Fulcio instance.
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}@${DIGEST}
