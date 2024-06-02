@@ -17,13 +17,21 @@ on:
 
 env:
   # Use docker.io for Docker Hub if empty.
-  REGISTRY: ghcr.io/${{ lower(github.actor) }}
+  GITHUB_ACTOR: github.actor
+  REGISTRY: ghcr.io/${{ github.actor }}
   # github.repository as <account>/<repo>
   API_IMAGE_NAME: fabrikam-api
   INIT_IMAGE_NAME: fabrikam-init  
   WEB_IMAGE_NAME: fabrikam-web
 
 jobs:
+  example_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set environment variable to lower case #1
+        run: echo "GITHUB_ACTOR=${GITHUB_ACTOR@L}" >> "${GITHUB_ENV}"
+      - name: Set environment variable to lower case #2
+        run: echo "REGISTRY=${REGISTRY@L}" >> "${GITHUB_ENV}"
   check_changed_folders:
       name: Check modified files
       outputs:
@@ -96,7 +104,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ lower(github.actor) }}
+          username: ${{ GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract metadata (tags, labels) for Docker
@@ -173,7 +181,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ lower(github.actor) }}
+          username: ${{ GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract INIT image metadata (tags, labels) for Docker
@@ -250,7 +258,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ lower(github.actor) }}
+          username: ${{ GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract WEB image metadata (tags, labels) for Docker
