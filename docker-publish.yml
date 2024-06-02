@@ -17,6 +17,7 @@ on:
 
 env:
   # Use docker.io for Docker Hub if empty.
+  GITHUB_ACTOR: github.actor
   REGISTRY: ghcr.io/${{ github.actor }}
   # github.repository as <account>/<repo>
   API_IMAGE_NAME: fabrikam-api
@@ -24,8 +25,16 @@ env:
   WEB_IMAGE_NAME: fabrikam-web
 
 jobs:
+  lower-case-env-vars:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set environment variable to lower case #1
+        run: echo "GITHUB_ACTOR=${GITHUB_ACTOR@L}" >> "${GITHUB_ENV}"
+      - name: Set environment variable to lower case #2
+        run: echo "REGISTRY=${REGISTRY@L}" >> "${GITHUB_ENV}"
   check_changed_folders:
       name: Check modified files
+      needs: lower-case-env-vars
       outputs:
         run_api_job: ${{ steps.check_files.outputs.run_api_job }}
         run_web_job: ${{ steps.check_files.outputs.run_web_job }}
@@ -42,20 +51,20 @@ jobs:
           run: |            
             echo "========== check paths of modified files =========="
             git diff --name-only HEAD^ HEAD > files.txt
-            echo "::set-output name=run_api_job::false"                
-            echo "::set-output name=run_web_job::false"            
-            echo "::set-output name=run_init_job::false"
+            echo "run_api_job=false" >> "$GITHUB_OUTPUT"                
+            echo "run_web_job=false" >> "$GITHUB_OUTPUT"            
+            echo "run_init_job=false" >> "$GITHUB_OUTPUT"
             while IFS= read -r file
             do
               echo $file
               if [[ $file == content-api/* ]]; then                
-                echo "::set-output name=run_api_job::true"
+                echo "run_api_job=true" >> "$GITHUB_OUTPUT"
                 continue
               elif [[ $file == content-web/* ]]; then                                                  
-                echo "::set-output name=run_web_job::true"
+                echo "run_web_job=true" >> "$GITHUB_OUTPUT"
                 continue
               elif [[ $file == content-init/* ]]; then                
-                echo "::set-output name=run_init_job::true"
+                echo "run_init_job=true" >> "$GITHUB_OUTPUT"
                 continue
               fi
             done < files.txt
@@ -96,7 +105,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ env.GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract metadata (tags, labels) for Docker
@@ -134,7 +143,7 @@ jobs:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.API_IMAGE_NAME }}@${DIGEST}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
       
   build-init:
     runs-on: ubuntu-latest
@@ -173,7 +182,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ env.GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract INIT image metadata (tags, labels) for Docker
@@ -207,11 +216,11 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-          TAGS: ${{ steps.meta.outputs-init.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs-init.digest }}
+          TAGS: ${{ steps.meta-init.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-init.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.INIT_IMAGE_NAME }}@${DIGEST}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
     
   build-web:
     runs-on: ubuntu-latest
@@ -250,7 +259,7 @@ jobs:
         uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ env.GITHUB_ACTOR }}
           password: ${{ secrets.CR_PAT }}
 
       # Extract WEB image metadata (tags, labels) for Docker
@@ -282,8 +291,8 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         env:
           # https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-          TAGS: ${{ steps.meta.outputs-web.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs-web.digest }}
+          TAGS: ${{ steps.meta-web.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push-web.outputs.digest }}
         # This step uses the identity token to provision an ephemeral certificate
         # against the sigstore community Fulcio instance.
-        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}${{ env.REGISTRY }}/${{ env.WEB_IMAGE_NAME }}@${DIGEST}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
