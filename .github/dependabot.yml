@@ -1,0 +1,36 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Example for NuGet Packages
+  # - package-ecosystem: "nuget" # NuGet Packages
+  #  directory: "/content-api" #/content-api/ContentApi.csproj
+  #  schedule:
+  #    interval: "weekly"
+  #  open-pull-requests-limit: 5
+  #  ignore:
+  #   - dependency-name: "Microsoft.AspNetCore.Mvc.NewtonsoftJson"
+  #     versions: ["5.*"]
+  - package-ecosystem: "github-actions" # GitHub Actions
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "npm" # NPM Dependencies
+    directory: "/content-init"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "npm" # NPM Dependencies
+    directory: "/content-api"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "npm" # NPM Dependencies
+    directory: "/content-web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
